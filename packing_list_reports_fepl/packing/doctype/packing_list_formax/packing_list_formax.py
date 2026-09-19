@@ -251,3 +251,165 @@ def get_print_html(docname, print_type):
             
     html += "</body></html>"
     return html
+
+
+@frappe.whitelist()
+def get_sticker_items_summary(docname):
+    import math
+    doc = frappe.get_doc('Packing List Formax', docname)
+    items = []
+    for item in doc.items:
+        total_qty = float(item.quantity or 0)
+        std_val = frappe.db.get_value('Item', item.item_code, 'custom_standard_packing_qty')
+        std_qty = float(std_val) if std_val else total_qty
+        if std_qty <= 0:
+            std_qty = total_qty if total_qty > 0 else 1
+        num_stickers = int(math.ceil(total_qty / std_qty)) if std_qty > 0 else 1
+        items.append({
+            "name": item.name,
+            "item_code": item.item_code,
+            "item_name": item.item_name,
+            "custom_cpn": item.custom_cpn or "",
+            "quantity": item.quantity,
+            "std_qty": std_qty,
+            "num_stickers": num_stickers
+        })
+    return items
+
+@frappe.whitelist()
+def get_stickers_15x50_html(docname, custom_quantities=None):
+    import json
+    import math
+    doc = frappe.get_doc('Packing List Formax', docname)
+    
+    qty_map = {}
+    if custom_quantities:
+        if isinstance(custom_quantities, str):
+            try:
+                qty_map = json.loads(custom_quantities)
+            except Exception:
+                pass
+        elif isinstance(custom_quantities, dict):
+            qty_map = custom_quantities
+
+    stickers_list = []
+    for item in doc.items:
+        if item.name in qty_map:
+            count = int(qty_map[item.name])
+        elif item.item_code in qty_map:
+            count = int(qty_map[item.item_code])
+        else:
+            total_qty = float(item.quantity or 0)
+            std_val = frappe.db.get_value('Item', item.item_code, 'custom_standard_packing_qty')
+            std_qty = float(std_val) if std_val else total_qty
+            if std_qty <= 0:
+                std_qty = total_qty if total_qty > 0 else 1
+            count = int(math.ceil(total_qty / std_qty)) if std_qty > 0 else 1
+            
+        cpn_text = (item.custom_cpn or "").strip()
+        for _ in range(max(0, count)):
+            stickers_list.append(cpn_text)
+
+    # 2 parallel labels per row
+    rows = []
+    for i in range(0, len(stickers_list), 2):
+        left_label = stickers_list[i]
+        right_label = stickers_list[i+1] if (i + 1) < len(stickers_list) else None
+        rows.append((left_label, right_label))
+
+    html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Print Stickers (15x50mm)</title>
+    <style>
+        @page {
+            size: 104mm 15mm;
+            margin: 0;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #fff;
+            margin: 0;
+            padding: 0;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .sticker-row {
+            width: 104mm;
+            height: 15mm;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            page-break-after: always;
+            break-after: page;
+            overflow: hidden;
+        }
+        .single-sticker {
+            width: 50mm;
+            height: 15mm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            overflow: hidden;
+            padding: 1mm 2mm;
+        }
+        .cpn-text {
+            font-size: 17px;
+            font-weight: 900;
+            color: #000;
+            line-height: 1.1;
+            letter-spacing: 0.5px;
+            text-align: center;
+            word-break: break-all;
+            max-width: 48mm;
+            max-height: 13mm;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        @media screen {
+            body {
+                background: #e0e0e0;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            .sticker-row {
+                background: #fff;
+                border: 1px dashed #aaa;
+                margin-bottom: 5px;
+            }
+            .single-sticker {
+                border: 1px dotted #ccc;
+            }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+"""
+    for left_cpn, right_cpn in rows:
+        html += '<div class="sticker-row">'
+        html += '<div class="single-sticker">'
+        if left_cpn:
+            html += f'<div class="cpn-text">{left_cpn}</div>'
+        html += '</div>'
+        
+        html += '<div class="single-sticker">'
+        if right_cpn:
+            html += f'<div class="cpn-text">{right_cpn}</div>'
+        html += '</div>'
+        html += '</div>'
+
+    html += """</body>
+</html>"""
+    return html

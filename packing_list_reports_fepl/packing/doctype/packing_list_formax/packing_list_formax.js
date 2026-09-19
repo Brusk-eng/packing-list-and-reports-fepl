@@ -68,6 +68,95 @@ frappe.ui.form.on('Packing List Formax', {
                 });
             }, __('Print'));
 
+            frm.add_custom_button(__('Print Stickers (15x50mm)'), function() {
+                frappe.call({
+                    method: 'packing_list_reports_fepl.packing.doctype.packing_list_formax.packing_list_formax.get_sticker_items_summary',
+                    args: { docname: frm.doc.name },
+                    freeze: true,
+                    callback: function(r) {
+                        if (r.message && r.message.length > 0) {
+                            let items = r.message;
+                            let rows_html = '';
+                            items.forEach(function(item) {
+                                rows_html += `
+                                    <tr>
+                                        <td><b>${item.item_name || item.item_code}</b><br><small class="text-muted">CPN: ${item.custom_cpn || 'N/A'}</small></td>
+                                        <td class="text-center">${item.quantity}</td>
+                                        <td class="text-center">${item.std_qty}</td>
+                                        <td style="width: 130px;">
+                                            <input type="number" min="0" step="1" class="form-control text-right sticker-qty-input" data-item-name="${item.name}" value="${item.num_stickers}">
+                                        </td>
+                                    </tr>
+                                `;
+                            });
+
+                            let html = `
+                                <div style="margin-bottom: 10px;">
+                                    <p class="text-muted" style="font-size: 13px;">
+                                        Review or adjust the quantity of 15×50mm stickers to print. Each sticker will print one CPN on one label (2 parallel labels per row on TSC TTP-244 Pro).
+                                    </p>
+                                </div>
+                                <div style="max-height: 320px; overflow-y: auto;">
+                                    <table class="table table-bordered table-condensed" style="margin-bottom: 0;">
+                                        <thead>
+                                            <tr class="active">
+                                                <th>Item / CPN</th>
+                                                <th class="text-center">Total Qty</th>
+                                                <th class="text-center">Std Pack</th>
+                                                <th class="text-right">Stickers to Print</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${rows_html}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `;
+
+                            let d = new frappe.ui.Dialog({
+                                title: __('Print Stickers (15x50mm)'),
+                                fields: [
+                                    { fieldtype: 'HTML', fieldname: 'items_table', options: html }
+                                ],
+                                primary_action_label: __('Print'),
+                                primary_action: function() {
+                                    let custom_quantities = {};
+                                    d.$wrapper.find('.sticker-qty-input').each(function() {
+                                        let item_key = $(this).attr('data-item-name');
+                                        let count = parseInt($(this).val()) || 0;
+                                        custom_quantities[item_key] = count;
+                                    });
+                                    d.hide();
+
+                                    frappe.call({
+                                        method: 'packing_list_reports_fepl.packing.doctype.packing_list_formax.packing_list_formax.get_stickers_15x50_html',
+                                        args: {
+                                            docname: frm.doc.name,
+                                            custom_quantities: JSON.stringify(custom_quantities)
+                                        },
+                                        freeze: true,
+                                        callback: function(res) {
+                                            if (res.message) {
+                                                var w = window.open();
+                                                w.document.write(res.message);
+                                                w.document.close();
+                                            }
+                                        }
+                                    });
+                                },
+                                secondary_action_label: __('Cancel'),
+                                secondary_action: function() {
+                                    d.hide();
+                                }
+                            });
+                            d.show();
+                        } else {
+                            frappe.msgprint(__('No items found in Packing List Formax.'));
+                        }
+                    }
+                });
+            }, __('Print'));
+
             frm.add_custom_button(__('Excel: Packing List'), function() {
                 var url = frappe.urllib.get_full_url("/api/method/packing_list_reports_fepl.packing.doctype.packing_list_formax.packing_list_formax.download_excel?docname=" + frm.doc.name + "&export_type=Packing List");
                 window.open(url, '_blank');
