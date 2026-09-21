@@ -341,7 +341,8 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             print-color-adjust: exact;
         }
         .sticker-row {
-            width: 104mm;
+            width: 100% !important;
+            max-width: 104mm;
             height: 15mm;
             display: flex;
             flex-direction: row;
@@ -351,43 +352,49 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             break-after: page;
             page-break-inside: avoid;
             box-sizing: border-box;
-            padding: 0 2mm;
+            padding: 0 1mm;
+            margin: 0 auto;
         }
         .single-sticker {
-            width: 48mm;
-            height: 14mm;
+            width: 50mm;
+            max-width: 49%;
+            height: 15mm;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
             box-sizing: border-box;
+            overflow: hidden;
         }
         .cpn-text {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 900;
             color: #000;
             line-height: 1;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
             text-align: center;
             white-space: nowrap;
         }
-        /* Rotation toggle for drivers requiring vertical feed rotation */
+        /* Rotation toggle when driver rotates text */
         body.rotate-90 .cpn-text {
             transform: rotate(90deg);
+        }
+        body.rotate-270 .cpn-text {
+            transform: rotate(270deg);
         }
         @media print {
             .no-print {
                 display: none !important;
             }
             html, body {
-                width: 104mm !important;
+                width: 100% !important;
                 height: auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 overflow: visible !important;
             }
             .sticker-row {
-                width: 104mm !important;
+                width: 100% !important;
                 height: 15mm !important;
                 page-break-after: always !important;
                 page-break-inside: avoid !important;
@@ -395,9 +402,12 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
                 display: flex !important;
             }
             .single-sticker {
-                width: 48mm !important;
-                height: 14mm !important;
+                width: 50mm !important;
+                max-width: 49% !important;
+                height: 15mm !important;
                 display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
             }
         }
         @media screen {
@@ -459,9 +469,9 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             document.body.classList.toggle('rotate-90');
             var btn = document.getElementById('rot-btn');
             if (document.body.classList.contains('rotate-90')) {
-                btn.innerText = 'ðŸ”„ Normal Layout';
+                btn.innerText = 'Ã°Å¸â€â€ž Normal Layout';
             } else {
-                btn.innerText = 'ðŸ”„ Rotate 90Â°';
+                btn.innerText = 'Ã°Å¸â€â€ž Rotate 90Ã‚Â°';
             }
         }
     </script>
@@ -471,8 +481,8 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
         <div>
             <b>TSC TTP-244 Pro Tips:</b> In Chrome Print Preview, set <b>Margins: None</b> and <b>Layout: Landscape</b>.
         </div>
-        <button class="btn-action" onclick="triggerPrint()">ðŸ–¨ï¸ Print</button>
-        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">ðŸ”„ Rotate 90Â°</button>
+        <button class="btn-action" onclick="triggerPrint()">Ã°Å¸â€“Â¨Ã¯Â¸Â Print</button>
+        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">Ã°Å¸â€â€ž Rotate 90Ã‚Â°</button>
     </div>
 """
     for left_cpn, right_cpn in rows:
