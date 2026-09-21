@@ -341,30 +341,29 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             print-color-adjust: exact;
         }
         .sticker-row {
-            width: 100% !important;
-            max-width: 104mm;
-            height: 15mm;
-            display: flex;
-            flex-direction: row;
-            justify-content: space-between;
-            align-items: center;
-            page-break-after: always;
-            break-after: page;
-            page-break-inside: avoid;
-            box-sizing: border-box;
-            padding: 0 1mm;
-            margin: 0 auto;
+            width: 104mm !important;
+            height: 15mm !important;
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            box-sizing: border-box !important;
+            padding: 0 2mm !important;
+            margin: 0 auto !important;
         }
         .single-sticker {
-            width: 50mm;
-            max-width: 49%;
-            height: 15mm;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            box-sizing: border-box;
-            overflow: hidden;
+            width: 48mm !important;
+            height: 15mm !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+            padding-top: 2.5mm !important;
         }
         .cpn-text {
             font-size: 20px;
@@ -387,27 +386,30 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
                 display: none !important;
             }
             html, body {
-                width: 100% !important;
+                width: 104mm !important;
                 height: auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 overflow: visible !important;
             }
             .sticker-row {
-                width: 100% !important;
+                width: 104mm !important;
                 height: 15mm !important;
                 page-break-after: always !important;
                 page-break-inside: avoid !important;
                 break-after: page !important;
                 display: flex !important;
+                box-sizing: border-box !important;
+                padding: 0 2mm !important;
             }
             .single-sticker {
-                width: 50mm !important;
-                max-width: 49% !important;
+                width: 48mm !important;
                 height: 15mm !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
+                box-sizing: border-box !important;
+                padding-top: 2.5mm !important;
             }
         }
         @media screen {
@@ -469,9 +471,9 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             document.body.classList.toggle('rotate-90');
             var btn = document.getElementById('rot-btn');
             if (document.body.classList.contains('rotate-90')) {
-                btn.innerText = 'Ã°Å¸â€â€ž Normal Layout';
+                btn.innerText = 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Normal Layout';
             } else {
-                btn.innerText = 'Ã°Å¸â€â€ž Rotate 90Ã‚Â°';
+                btn.innerText = 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Rotate 90Ãƒâ€šÃ‚Â°';
             }
         }
     </script>
@@ -481,8 +483,8 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
         <div>
             <b>TSC TTP-244 Pro Tips:</b> In Chrome Print Preview, set <b>Margins: None</b> and <b>Layout: Landscape</b>.
         </div>
-        <button class="btn-action" onclick="triggerPrint()">Ã°Å¸â€“Â¨Ã¯Â¸Â Print</button>
-        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">Ã°Å¸â€â€ž Rotate 90Ã‚Â°</button>
+        <button class="btn-action" onclick="triggerPrint()">ÃƒÂ°Ã…Â¸Ã¢â‚¬â€œÃ‚Â¨ÃƒÂ¯Ã‚Â¸Ã‚Â Print</button>
+        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Rotate 90Ãƒâ€šÃ‚Â°</button>
     </div>
 """
     for left_cpn, right_cpn in rows:
