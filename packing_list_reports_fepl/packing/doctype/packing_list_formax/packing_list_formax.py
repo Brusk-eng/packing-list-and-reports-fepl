@@ -324,8 +324,8 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
     <title>Print Stickers (15x50mm)</title>
     <style>
         @page {
-            size: 104mm 15mm landscape;
-            margin: 0;
+            size: 104mm 15mm;
+            margin: 0mm;
         }
         * {
             box-sizing: border-box;
@@ -350,18 +350,16 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             page-break-after: always;
             break-after: page;
             page-break-inside: avoid;
-            overflow: hidden;
             box-sizing: border-box;
-            padding: 0 1.5mm;
+            padding: 0 2mm;
         }
         .single-sticker {
             width: 48mm;
-            height: 13.5mm;
+            height: 14mm;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
-            overflow: hidden;
             box-sizing: border-box;
         }
         .cpn-text {
@@ -382,17 +380,24 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
                 display: none !important;
             }
             html, body {
-                width: 104mm;
-                height: 15mm;
+                width: 104mm !important;
+                height: auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                overflow: hidden;
+                overflow: visible !important;
             }
             .sticker-row {
                 width: 104mm !important;
                 height: 15mm !important;
                 page-break-after: always !important;
+                page-break-inside: avoid !important;
                 break-after: page !important;
+                display: flex !important;
+            }
+            .single-sticker {
+                width: 48mm !important;
+                height: 14mm !important;
+                display: flex !important;
             }
         }
         @media screen {
@@ -454,9 +459,9 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             document.body.classList.toggle('rotate-90');
             var btn = document.getElementById('rot-btn');
             if (document.body.classList.contains('rotate-90')) {
-                btn.innerText = '🔄 Normal Layout';
+                btn.innerText = 'ðŸ”„ Normal Layout';
             } else {
-                btn.innerText = '🔄 Rotate 90°';
+                btn.innerText = 'ðŸ”„ Rotate 90Â°';
             }
         }
     </script>
@@ -466,8 +471,8 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
         <div>
             <b>TSC TTP-244 Pro Tips:</b> In Chrome Print Preview, set <b>Margins: None</b> and <b>Layout: Landscape</b>.
         </div>
-        <button class="btn-action" onclick="triggerPrint()">🖨️ Print</button>
-        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">🔄 Rotate 90°</button>
+        <button class="btn-action" onclick="triggerPrint()">ðŸ–¨ï¸ Print</button>
+        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">ðŸ”„ Rotate 90Â°</button>
     </div>
 """
     for left_cpn, right_cpn in rows:
