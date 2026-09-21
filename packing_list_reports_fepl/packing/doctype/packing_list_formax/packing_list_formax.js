@@ -91,9 +91,9 @@ frappe.ui.form.on('Packing List Formax', {
                             });
 
                             let html = `
-                                <div style="margin-bottom: 10px;">
-                                    <p class="text-muted" style="font-size: 13px;">
-                                        Review or adjust the quantity of 15×50mm stickers to print. Each sticker will print one CPN on one label (2 parallel labels per row on TSC TTP-244 Pro).
+                                                                <div style="margin-bottom: 12px; background: #eef7fc; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #2490ef;">
+                                    <p style="font-size: 13px; margin: 0; color: #1e3a8a;">
+                                        <b>TSC Print Tip:</b> In the browser print window, select <b>Layout: Landscape</b> and <b>Margins: None</b> to print horizontally on both labels.
                                     </p>
                                 </div>
                                 <div style="max-height: 320px; overflow-y: auto;">

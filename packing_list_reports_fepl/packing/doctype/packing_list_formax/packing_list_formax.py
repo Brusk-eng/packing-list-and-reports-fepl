@@ -324,7 +324,7 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
     <title>Print Stickers (15x50mm)</title>
     <style>
         @page {
-            size: 104mm 15mm;
+            size: 104mm 15mm landscape;
             margin: 0;
         }
         * {
@@ -349,53 +349,126 @@ def get_stickers_15x50_html(docname, custom_quantities=None):
             align-items: center;
             page-break-after: always;
             break-after: page;
+            page-break-inside: avoid;
             overflow: hidden;
+            box-sizing: border-box;
+            padding: 0 1.5mm;
         }
         .single-sticker {
-            width: 50mm;
-            height: 15mm;
+            width: 48mm;
+            height: 13.5mm;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
             overflow: hidden;
-            padding: 1mm 2mm;
+            box-sizing: border-box;
         }
         .cpn-text {
-            font-size: 17px;
+            font-size: 18px;
             font-weight: 900;
             color: #000;
-            line-height: 1.1;
+            line-height: 1;
             letter-spacing: 0.5px;
             text-align: center;
-            word-break: break-all;
-            max-width: 48mm;
-            max-height: 13mm;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
+            white-space: nowrap;
+        }
+        /* Rotation toggle for drivers requiring vertical feed rotation */
+        body.rotate-90 .cpn-text {
+            transform: rotate(90deg);
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            html, body {
+                width: 104mm;
+                height: 15mm;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden;
+            }
+            .sticker-row {
+                width: 104mm !important;
+                height: 15mm !important;
+                page-break-after: always !important;
+                break-after: page !important;
+            }
         }
         @media screen {
             body {
-                background: #e0e0e0;
+                background: #f0f2f5;
                 padding: 20px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
             }
+            .no-print-toolbar {
+                background: #1f272e;
+                color: #fff;
+                padding: 12px 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                max-width: 600px;
+                font-size: 13px;
+            }
+            .btn-action {
+                background: #2490ef;
+                color: #fff;
+                border: none;
+                padding: 6px 14px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            .btn-action:hover {
+                background: #1976d2;
+            }
+            .btn-secondary {
+                background: #4a5568;
+            }
+            .btn-secondary:hover {
+                background: #2d3748;
+            }
             .sticker-row {
                 background: #fff;
-                border: 1px dashed #aaa;
-                margin-bottom: 5px;
+                border: 1px dashed #bbb;
+                margin-bottom: 6px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
             }
             .single-sticker {
                 border: 1px dotted #ccc;
             }
         }
     </style>
+    <script>
+        function triggerPrint() {
+            window.print();
+        }
+        function toggleRotation() {
+            document.body.classList.toggle('rotate-90');
+            var btn = document.getElementById('rot-btn');
+            if (document.body.classList.contains('rotate-90')) {
+                btn.innerText = '🔄 Normal Layout';
+            } else {
+                btn.innerText = '🔄 Rotate 90°';
+            }
+        }
+    </script>
 </head>
 <body onload="window.print()">
+    <div class="no-print no-print-toolbar">
+        <div>
+            <b>TSC TTP-244 Pro Tips:</b> In Chrome Print Preview, set <b>Margins: None</b> and <b>Layout: Landscape</b>.
+        </div>
+        <button class="btn-action" onclick="triggerPrint()">🖨️ Print</button>
+        <button class="btn-action btn-secondary" id="rot-btn" onclick="toggleRotation()">🔄 Rotate 90°</button>
+    </div>
 """
     for left_cpn, right_cpn in rows:
         html += '<div class="sticker-row">'
