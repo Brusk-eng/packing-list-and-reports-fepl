@@ -1,5 +1,95 @@
 frappe.ui.form.on('Delivery Note', {
 	refresh: function(frm) {
+		if (frm.doc.items && frm.doc.items.length > 0) {
+			frm.add_custom_button(__('Mat.-Label (50x75mm)'), function() {
+				frappe.call({
+					method: 'packing_list_reports_fepl.packing.delivery_note_label.get_dn_label_items',
+					args: { docname: frm.doc.name },
+					freeze: true,
+					callback: function(r) {
+						if (r.message && r.message.length > 0) {
+							let items = r.message;
+							let rows_html = '';
+							items.forEach(function(item) {
+								rows_html += `
+									<tr>
+										<td><b>${item.item_name || item.item_code}</b><br><small class="text-muted">CPN: ${item.custom_cpn || 'N/A'} | Pkg ID: ${item.custom_package_id || 'N/A'}</small></td>
+										<td class="text-center">${item.quantity}</td>
+										<td class="text-center">${item.std_qty}</td>
+										<td style="width: 120px;">
+											<input type="number" min="0" step="1" class="form-control text-right dn-label-qty-input" data-item-name="${item.name}" value="${item.num_labels}">
+										</td>
+									</tr>
+								`;
+							});
+
+							let html = `
+								<div style="margin-bottom: 12px; background: #eef7fc; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #2490ef;">
+									<p style="font-size: 13px; margin: 0; color: #1e3a8a;">
+										<b>TSC Printer Tip:</b> Ensure Paper Size is set to <b>75mm x 50mm</b>, <b>Layout: Portrait</b>, and <b>Margins: None</b>.
+									</p>
+								</div>
+								<div style="max-height: 320px; overflow-y: auto;">
+									<table class="table table-bordered table-condensed" style="margin-bottom: 0;">
+										<thead>
+											<tr class="active">
+												<th>Item / Details</th>
+												<th class="text-center">Total Qty</th>
+												<th class="text-center">SPQ</th>
+												<th class="text-right">Labels to Print</th>
+											</tr>
+										</thead>
+										<tbody>
+											${rows_html}
+										</tbody>
+									</table>
+								</div>
+							`;
+
+							let d = new frappe.ui.Dialog({
+								title: __('Print Mat.-Label (50x75mm)'),
+								fields: [
+									{ fieldtype: 'HTML', fieldname: 'items_table', options: html }
+								],
+								primary_action_label: __('Print'),
+								primary_action: function() {
+									let custom_quantities = {};
+									d.$wrapper.find('.dn-label-qty-input').each(function() {
+										let item_key = $(this).attr('data-item-name');
+										let count = parseInt($(this).val()) || 0;
+										custom_quantities[item_key] = count;
+									});
+									d.hide();
+
+									frappe.call({
+										method: 'packing_list_reports_fepl.packing.delivery_note_label.get_mat_label_html',
+										args: {
+											docname: frm.doc.name,
+											custom_quantities: JSON.stringify(custom_quantities)
+										},
+										freeze: true,
+										callback: function(res) {
+											if (res.message) {
+												var w = window.open();
+												w.document.write(res.message);
+												w.document.close();
+											}
+										}
+									});
+								},
+								secondary_action_label: __('Cancel'),
+								secondary_action: function() {
+									d.hide();
+								}
+							});
+							d.show();
+						} else {
+							frappe.msgprint(__('No items found in Delivery Note.'));
+						}
+					}
+				});
+			}, __('Print'));
+		}
 		if (frm.doc.docstatus === 0 && frm.doc.items && frm.doc.items.length > 0) {
 			frm.add_custom_button(__('Fetch Allocation'), function() {
 				frm.events.fetch_allocation(frm);
