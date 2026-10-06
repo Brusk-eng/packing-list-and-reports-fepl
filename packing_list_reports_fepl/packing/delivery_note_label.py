@@ -5,39 +5,18 @@ import math
 import json
 import re
 
-def extract_cpn_and_po(raw_cpn, explicit_po=""):
-	"""
-	Cleans CPN to remove PO number and prefixes like 'Hella PN-'.
-	Extracts Customer PO if contained in CPN (e.g. 'Hella PN- 79907658; PO-5500012208').
-	"""
-	raw_cpn = (raw_cpn or "").strip()
-	extracted_po = ""
-	
-	# Match patterns like: "; PO-5500012208", "; PO: 5500012208", "/ PO 5500012208"
-	match = re.search(r'[;,/|\s]+PO[-:\s#]*([A-Za-z0-9_-]+)', raw_cpn, re.IGNORECASE)
-	if match:
-		extracted_po = match.group(1).strip()
-		clean_cpn = re.sub(r'[;,/|\s]+PO[-:\s#]*[A-Za-z0-9_-]+.*', '', raw_cpn, flags=re.IGNORECASE).strip()
-	else:
-		clean_cpn = raw_cpn
-		
-	# Clean any redundant "Hella PN-" or "PN-" prefix from CPN if present
-	clean_cpn_no_prefix = re.sub(r'^(?:Hella\s+)?PN[-:\s]*', '', clean_cpn, flags=re.IGNORECASE).strip()
-	if clean_cpn_no_prefix:
-		clean_cpn = clean_cpn_no_prefix
-
-	final_po = (explicit_po or "").strip()
-	if not final_po and extracted_po:
-		final_po = extracted_po
-
-	return clean_cpn, final_po
-
 @frappe.whitelist()
 def get_dn_label_items(docname):
 	"""
 	Returns items list with calculated label quantities for review dialog.
 	"""
 	doc = frappe.get_doc("Delivery Note", docname)
+	
+	# Fetch Customer's Purchase Order No from Delivery Note po_no
+	doc_po = (doc.get("po_no") or "").strip()
+	if doc_po:
+		doc_po = doc_po.split("\n")[0].strip()
+
 	items = []
 	for item in doc.items:
 		total_qty = float(item.qty or 0)
@@ -48,25 +27,26 @@ def get_dn_label_items(docname):
 			
 		num_labels = int(math.ceil(total_qty / std_qty)) if std_qty > 0 else 1
 		
-		raw_cpn = item.get("custom_cpn") or ""
-		raw_po = item.get("custom_customer_po") or ""
-		clean_cpn, final_po = extract_cpn_and_po(raw_cpn, raw_po)
+		# Complete value from custom_cpn
+		cpn_val = (item.get("custom_cpn") or "").strip()
 		
-		if not final_po:
-			final_po = doc.get("po_no") or ""
-		if not final_po and item.get("against_sales_order"):
-			final_po = frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or item.against_sales_order or ""
+		# Customer PO: item custom_customer_po or Delivery Note po_no or Sales Order po_no
+		po_val = (item.get("custom_customer_po") or "").strip()
+		if not po_val:
+			po_val = doc_po
+		if not po_val and item.get("against_sales_order"):
+			po_val = (frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or "").strip()
 
 		items.append({
 			"name": item.name,
 			"item_code": item.item_code,
 			"item_name": item.item_name or item.item_code,
-			"custom_cpn": clean_cpn,
+			"custom_cpn": cpn_val,
 			"custom_package_id": item.get("custom_package_id") or "",
-			"custom_customer_po": final_po,
-			"custom_supplier_id": item.get("custom_supplier_id") or "",
+			"custom_customer_po": po_val,
+			"custom_supplier_id": "48104528",
 			"custom_mfg_date": str(item.get("custom_mfg_date") or ""),
-			"custom_mfg_location": item.get("custom_mfg_location") or "CHN",
+			"custom_mfg_location": item.get("custom_mfg_location") or "China",
 			"quantity": item.qty,
 			"std_qty": int(std_qty) if std_qty == int(std_qty) else std_qty,
 			"num_labels": num_labels
@@ -80,6 +60,11 @@ def get_mat_label_html(docname, custom_quantities=None):
 	"""
 	doc = frappe.get_doc("Delivery Note", docname)
 	
+	# Fetch Customer's Purchase Order No from Delivery Note po_no
+	doc_po = (doc.get("po_no") or "").strip()
+	if doc_po:
+		doc_po = doc_po.split("\n")[0].strip()
+
 	qty_map = {}
 	if custom_quantities:
 		if isinstance(custom_quantities, str):
@@ -116,19 +101,21 @@ def get_mat_label_html(docname, custom_quantities=None):
 			
 		std_qty_val = int(std_qty) if std_qty == int(std_qty) else std_qty
 
-		raw_cpn = item.get("custom_cpn") or ""
-		raw_po = item.get("custom_customer_po") or ""
-		clean_cpn, cust_po = extract_cpn_and_po(raw_cpn, raw_po)
-		
-		# If Customer PO not explicit, check Delivery Note po_no or Sales Order po_no
-		if not cust_po:
-			cust_po = (doc.get("po_no") or "").strip()
-		if not cust_po and item.get("against_sales_order"):
-			cust_po = (frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or item.against_sales_order or "").strip()
+		# 1. Part No: Complete value from custom_cpn
+		cpn = (item.get("custom_cpn") or "").strip()
 
-		mfg_loc = (item.get("custom_mfg_location") or "CHN").strip()
+		# 2. Purchase Order: Customer's Purchase Order No from Delivery Note (doc.po_no) or item field
+		cust_po = (item.get("custom_customer_po") or "").strip()
+		if not cust_po:
+			cust_po = doc_po
+		if not cust_po and item.get("against_sales_order"):
+			cust_po = (frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or "").strip()
+
+		# 3. Supplier ID: Fixed to 48104528 for all labels as requested
+		supp_id = "48104528"
+
+		mfg_loc = (item.get("custom_mfg_location") or "China").strip()
 		pkg_id = (item.get("custom_package_id") or "").strip()
-		supp_id = (item.get("custom_supplier_id") or "").strip()
 		mfg_date_raw = item.get("custom_mfg_date") or doc.posting_date
 		
 		# Format dates (DD.MM.YYYY as per sample)
@@ -161,14 +148,14 @@ def get_mat_label_html(docname, custom_quantities=None):
 			pu_no = current_pkg_id
 
 			# Formatted 1D Barcode Strings
-			part_supp_bc = f"P{clean_cpn}@V{supp_id}"
+			part_supp_bc = f"P{cpn}@V{supp_id}"
 			pkg_qty_bc = f"H{current_pkg_id}@Q{lbl_qty:05d}" if isinstance(lbl_qty, int) else f"H{current_pkg_id}@Q{lbl_qty}"
 
 			# 2D Data Matrix Code string (Standard Automotive Mat.-Label format)
-			dmc_str = f"P{clean_cpn}@Q{lbl_qty}@V{supp_id}@S{current_pkg_id}@K{cust_po}@10D{mfg_date_str}@14D{exp_date_str}@B{doc.name}"
+			dmc_str = f"P{cpn}@Q{lbl_qty}@V{supp_id}@S{current_pkg_id}@K{cust_po}@10D{mfg_date_str}@14D{exp_date_str}@B{doc.name}"
 
 			labels_data.append({
-				"cpn": clean_cpn,
+				"cpn": cpn,
 				"quantity": lbl_qty,
 				"mfg_location": mfg_loc,
 				"supplier_name": "Formax Electronics Pvt Ltd",
@@ -221,7 +208,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			break-after: page;
 			page-break-inside: avoid;
 			box-sizing: border-box;
-			padding: 2.2mm 2.5mm 2.2mm 2.5mm;
+			padding: 2.0mm 2.5mm 2.0mm 2.5mm;
 			position: relative;
 			background: #fff;
 			overflow: hidden;
@@ -229,17 +216,17 @@ def get_mat_label_html(docname, custom_quantities=None):
 			flex-direction: column;
 			justify-content: space-between;
 		}}
-		/* Top section */
+		/* Top section - Height 16.5mm ensuring Package-ID is 100% visible */
 		.top-section {{
 			display: flex;
 			flex-direction: row;
 			align-items: flex-start;
-			height: 14.5mm;
+			height: 16.5mm;
 			overflow: hidden;
 		}}
 		.dmc-container {{
-			width: 14.5mm;
-			height: 14.5mm;
+			width: 15.5mm;
+			height: 15.5mm;
 			margin-right: 2.5mm;
 			flex-shrink: 0;
 			display: flex;
@@ -247,8 +234,8 @@ def get_mat_label_html(docname, custom_quantities=None):
 			justify-content: center;
 		}}
 		.dmc-canvas {{
-			width: 14.5mm;
-			height: 14.5mm;
+			width: 15.5mm;
+			height: 15.5mm;
 			image-rendering: pixelated;
 		}}
 		.top-text-col {{
@@ -268,7 +255,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			font-size: 7.8pt;
 		}}
 
-		/* Middle section */
+		/* Middle section - Height 15.5mm with Shipping Note moved below MS-Level */
 		.mid-section {{
 			display: flex;
 			flex-direction: row;
@@ -306,23 +293,23 @@ def get_mat_label_html(docname, custom_quantities=None):
 			margin: 0.2mm 0;
 		}}
 
-		/* Bottom section */
+		/* Bottom section - Height 14.0mm with balanced margins */
 		.bottom-section {{
-			height: 15mm;
+			height: 14.0mm;
 			display: flex;
 			flex-direction: column;
 			justify-content: flex-end;
 			overflow: hidden;
 			border-top: 0.5px solid #bbb;
-			padding-top: 0.8mm;
+			padding-top: 0.6mm;
 		}}
 		.barcode-block {{
-			margin-bottom: 0.4mm;
+			margin-bottom: 0.3mm;
 			text-align: center;
 		}}
 		.full-barcode-canvas {{
 			width: 68mm;
-			height: 4.5mm;
+			height: 4.2mm;
 			display: block;
 			margin: 0 auto;
 			image-rendering: pixelated;
@@ -442,12 +429,12 @@ def get_mat_label_html(docname, custom_quantities=None):
 						<div><b>Purchase Order:</b> ${{lbl.customer_po}}</div>
 						<div><b>Man. Part No:</b> ${{lbl.mpn}}</div>
 						<div><b>MS-Level:</b> ${{lbl.ms_level}} &nbsp;&nbsp; <b>Date of Man.:</b> ${{lbl.mfg_date}}</div>
+						<div><b>Shipping Note:</b> ${{lbl.shipping_note}}</div>
 					</div>
 					<div class="mid-right">
 						<div><b>Supplier-ID:</b> ${{lbl.supplier_id}} &nbsp; <b>${{lbl.rohs_conf}}</b></div>
 						<div><b>PU-No.:</b> ${{lbl.pu_no}}</div>
 						<div><canvas id="pubc_${{i}}" class="pu-barcode-canvas"></canvas></div>
-						<div><b>Shipping Note:</b> ${{lbl.shipping_note}}</div>
 						<div><b>Exp.-Date:</b> ${{lbl.exp_date}}</div>
 					</div>
 				</div>
@@ -499,7 +486,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 						bcid: "code128",
 						text: lbl.part_supp_bc,
 						scale: 2,
-						height: 7,
+						height: 6,
 						includetext: false
 					}});
 
@@ -508,7 +495,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 						bcid: "code128",
 						text: lbl.pkg_qty_bc,
 						scale: 2,
-						height: 7,
+						height: 6,
 						includetext: false
 					}});
 				}} catch (err) {{
