@@ -3,6 +3,34 @@ from frappe import _
 from frappe.utils import flt, getdate, add_to_date, formatdate
 import math
 import json
+import re
+
+def extract_cpn_and_po(raw_cpn, explicit_po=""):
+	"""
+	Cleans CPN to remove PO number and prefixes like 'Hella PN-'.
+	Extracts Customer PO if contained in CPN (e.g. 'Hella PN- 79907658; PO-5500012208').
+	"""
+	raw_cpn = (raw_cpn or "").strip()
+	extracted_po = ""
+	
+	# Match patterns like: "; PO-5500012208", "; PO: 5500012208", "/ PO 5500012208"
+	match = re.search(r'[;,/|\s]+PO[-:\s#]*([A-Za-z0-9_-]+)', raw_cpn, re.IGNORECASE)
+	if match:
+		extracted_po = match.group(1).strip()
+		clean_cpn = re.sub(r'[;,/|\s]+PO[-:\s#]*[A-Za-z0-9_-]+.*', '', raw_cpn, flags=re.IGNORECASE).strip()
+	else:
+		clean_cpn = raw_cpn
+		
+	# Clean any redundant "Hella PN-" or "PN-" prefix from CPN if present
+	clean_cpn_no_prefix = re.sub(r'^(?:Hella\s+)?PN[-:\s]*', '', clean_cpn, flags=re.IGNORECASE).strip()
+	if clean_cpn_no_prefix:
+		clean_cpn = clean_cpn_no_prefix
+
+	final_po = (explicit_po or "").strip()
+	if not final_po and extracted_po:
+		final_po = extracted_po
+
+	return clean_cpn, final_po
 
 @frappe.whitelist()
 def get_dn_label_items(docname):
@@ -20,13 +48,22 @@ def get_dn_label_items(docname):
 			
 		num_labels = int(math.ceil(total_qty / std_qty)) if std_qty > 0 else 1
 		
+		raw_cpn = item.get("custom_cpn") or ""
+		raw_po = item.get("custom_customer_po") or ""
+		clean_cpn, final_po = extract_cpn_and_po(raw_cpn, raw_po)
+		
+		if not final_po:
+			final_po = doc.get("po_no") or ""
+		if not final_po and item.get("against_sales_order"):
+			final_po = frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or item.against_sales_order or ""
+
 		items.append({
 			"name": item.name,
 			"item_code": item.item_code,
 			"item_name": item.item_name or item.item_code,
-			"custom_cpn": item.get("custom_cpn") or "",
+			"custom_cpn": clean_cpn,
 			"custom_package_id": item.get("custom_package_id") or "",
-			"custom_customer_po": item.get("custom_customer_po") or item.against_sales_order or "",
+			"custom_customer_po": final_po,
 			"custom_supplier_id": item.get("custom_supplier_id") or "",
 			"custom_mfg_date": str(item.get("custom_mfg_date") or ""),
 			"custom_mfg_location": item.get("custom_mfg_location") or "CHN",
@@ -79,14 +116,22 @@ def get_mat_label_html(docname, custom_quantities=None):
 			
 		std_qty_val = int(std_qty) if std_qty == int(std_qty) else std_qty
 
-		cpn = (item.get("custom_cpn") or "").strip()
+		raw_cpn = item.get("custom_cpn") or ""
+		raw_po = item.get("custom_customer_po") or ""
+		clean_cpn, cust_po = extract_cpn_and_po(raw_cpn, raw_po)
+		
+		# If Customer PO not explicit, check Delivery Note po_no or Sales Order po_no
+		if not cust_po:
+			cust_po = (doc.get("po_no") or "").strip()
+		if not cust_po and item.get("against_sales_order"):
+			cust_po = (frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or item.against_sales_order or "").strip()
+
 		mfg_loc = (item.get("custom_mfg_location") or "CHN").strip()
 		pkg_id = (item.get("custom_package_id") or "").strip()
 		supp_id = (item.get("custom_supplier_id") or "").strip()
-		cust_po = (item.get("custom_customer_po") or item.against_sales_order or "").strip()
 		mfg_date_raw = item.get("custom_mfg_date") or doc.posting_date
 		
-		# Format dates
+		# Format dates (DD.MM.YYYY as per sample)
 		mfg_date_str = ""
 		exp_date_str = ""
 		if mfg_date_raw:
@@ -100,13 +145,10 @@ def get_mat_label_html(docname, custom_quantities=None):
 				exp_date_str = ""
 
 		item_desc = (item.description or "").strip()
-		# Clean description of HTML tags
-		import re
 		item_desc_clean = re.sub(r"<[^>]+>", "", item_desc).strip()
 		item_name_clean = (item.item_name or item.item_code or "").strip()
 
 		for idx in range(count):
-			# Determine label quantity: full SPQ for intermediate labels, remainder for the last one if applicable
 			if idx + 1 < count:
 				lbl_qty = std_qty_val
 			else:
@@ -115,22 +157,18 @@ def get_mat_label_html(docname, custom_quantities=None):
 				if lbl_qty <= 0:
 					lbl_qty = std_qty_val
 
-			# Package ID & PU-No
 			current_pkg_id = pkg_id
-			if count > 1 and pkg_id and not pkg_id.endswith(f"-{idx+1}"):
-				current_pkg_id = f"{pkg_id}"
-				
 			pu_no = current_pkg_id
 
 			# Formatted 1D Barcode Strings
-			part_supp_bc = f"P{cpn}@V{supp_id}"
+			part_supp_bc = f"P{clean_cpn}@V{supp_id}"
 			pkg_qty_bc = f"H{current_pkg_id}@Q{lbl_qty:05d}" if isinstance(lbl_qty, int) else f"H{current_pkg_id}@Q{lbl_qty}"
 
 			# 2D Data Matrix Code string (Standard Automotive Mat.-Label format)
-			dmc_str = f"P{cpn}@Q{lbl_qty}@V{supp_id}@S{current_pkg_id}@K{cust_po}@10D{mfg_date_str}@14D{exp_date_str}@B{doc.name}"
+			dmc_str = f"P{clean_cpn}@Q{lbl_qty}@V{supp_id}@S{current_pkg_id}@K{cust_po}@10D{mfg_date_str}@14D{exp_date_str}@B{doc.name}"
 
 			labels_data.append({
-				"cpn": cpn,
+				"cpn": clean_cpn,
 				"quantity": lbl_qty,
 				"mfg_location": mfg_loc,
 				"supplier_name": "Formax Electronics Pvt Ltd",
@@ -183,7 +221,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			break-after: page;
 			page-break-inside: avoid;
 			box-sizing: border-box;
-			padding: 1.5mm 2.5mm;
+			padding: 2.2mm 2.5mm 2.2mm 2.5mm;
 			position: relative;
 			background: #fff;
 			overflow: hidden;
@@ -196,26 +234,26 @@ def get_mat_label_html(docname, custom_quantities=None):
 			display: flex;
 			flex-direction: row;
 			align-items: flex-start;
-			height: 16.5mm;
+			height: 14.5mm;
 			overflow: hidden;
 		}}
 		.dmc-container {{
-			width: 16.5mm;
-			height: 16.5mm;
-			margin-right: 2mm;
+			width: 14.5mm;
+			height: 14.5mm;
+			margin-right: 2.5mm;
 			flex-shrink: 0;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 		}}
 		.dmc-canvas {{
-			width: 16mm;
-			height: 16mm;
+			width: 14.5mm;
+			height: 14.5mm;
 			image-rendering: pixelated;
 		}}
 		.top-text-col {{
 			flex: 1;
-			font-size: 7pt;
+			font-size: 6.8pt;
 			line-height: 1.25;
 			color: #000;
 			overflow: hidden;
@@ -227,7 +265,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 		}}
 		.bold-val {{
 			font-weight: bold;
-			font-size: 8pt;
+			font-size: 7.8pt;
 		}}
 
 		/* Middle section */
@@ -235,12 +273,12 @@ def get_mat_label_html(docname, custom_quantities=None):
 			display: flex;
 			flex-direction: row;
 			justify-content: space-between;
-			height: 14mm;
-			font-size: 6.5pt;
-			line-height: 1.2;
+			height: 15.5mm;
+			font-size: 6.2pt;
+			line-height: 1.25;
 			overflow: hidden;
-			border-top: 0.5px solid #ddd;
-			padding-top: 1mm;
+			border-top: 0.5px solid #bbb;
+			padding-top: 0.8mm;
 		}}
 		.mid-left {{
 			width: 44mm;
@@ -252,7 +290,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			text-overflow: ellipsis;
 		}}
 		.mid-right {{
-			width: 25mm;
+			width: 25.5mm;
 			overflow: hidden;
 		}}
 		.mid-right div {{
@@ -262,34 +300,35 @@ def get_mat_label_html(docname, custom_quantities=None):
 		}}
 		.pu-barcode-canvas {{
 			width: 24mm;
-			height: 3.5mm;
+			height: 3.2mm;
 			display: block;
 			image-rendering: pixelated;
+			margin: 0.2mm 0;
 		}}
 
 		/* Bottom section */
 		.bottom-section {{
-			height: 16.5mm;
+			height: 15mm;
 			display: flex;
 			flex-direction: column;
 			justify-content: flex-end;
 			overflow: hidden;
-			border-top: 0.5px solid #ddd;
-			padding-top: 0.5mm;
+			border-top: 0.5px solid #bbb;
+			padding-top: 0.8mm;
 		}}
 		.barcode-block {{
-			margin-bottom: 0.5mm;
+			margin-bottom: 0.4mm;
 			text-align: center;
 		}}
 		.full-barcode-canvas {{
 			width: 68mm;
-			height: 5mm;
+			height: 4.5mm;
 			display: block;
 			margin: 0 auto;
 			image-rendering: pixelated;
 		}}
 		.barcode-caption {{
-			font-size: 6pt;
+			font-size: 5.8pt;
 			font-family: monospace;
 			font-weight: bold;
 			text-align: center;
@@ -450,7 +489,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 							bcid: "code128",
 							text: lbl.pu_no,
 							scale: 2,
-							height: 6,
+							height: 5,
 							includetext: false
 						}});
 					}}
@@ -460,7 +499,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 						bcid: "code128",
 						text: lbl.part_supp_bc,
 						scale: 2,
-						height: 8,
+						height: 7,
 						includetext: false
 					}});
 
@@ -469,7 +508,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 						bcid: "code128",
 						text: lbl.pkg_qty_bc,
 						scale: 2,
-						height: 8,
+						height: 7,
 						includetext: false
 					}});
 				}} catch (err) {{
@@ -480,7 +519,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			// Auto trigger print after render
 			setTimeout(() => {{
 				window.print();
-			}}, 600);
+			}}, 500);
 		}}
 	</script>
 </body>
