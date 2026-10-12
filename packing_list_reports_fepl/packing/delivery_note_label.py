@@ -118,15 +118,19 @@ def get_mat_label_html(docname, custom_quantities=None):
 		pkg_id = (item.get("custom_package_id") or "").strip()
 		mfg_date_raw = item.get("custom_mfg_date") or doc.posting_date
 		
-		# Format dates (DD.MM.YYYY as per sample)
+		# Format dates (DD.MM.YYYY for visual display, YYYYMMDD for 2D Data Matrix Barcode)
 		mfg_date_str = ""
 		exp_date_str = ""
+		mfg_date_dmc = ""
+		exp_date_dmc = ""
 		if mfg_date_raw:
 			try:
 				parsed_mfg = getdate(mfg_date_raw)
 				mfg_date_str = parsed_mfg.strftime("%d.%m.%Y")
+				mfg_date_dmc = parsed_mfg.strftime("%Y%m%d")
 				parsed_exp = add_to_date(parsed_mfg, years=2)
 				exp_date_str = parsed_exp.strftime("%d.%m.%Y")
+				exp_date_dmc = parsed_exp.strftime("%Y%m%d")
 			except Exception:
 				mfg_date_str = str(mfg_date_raw)
 				exp_date_str = ""
@@ -151,8 +155,27 @@ def get_mat_label_html(docname, custom_quantities=None):
 			part_supp_bc = f"P{cpn}@V{supp_id}"
 			pkg_qty_bc = f"H{current_pkg_id}@Q{lbl_qty:05d}" if isinstance(lbl_qty, int) else f"H{current_pkg_id}@Q{lbl_qty}"
 
-			# 2D Data Matrix Code string (Standard Automotive Mat.-Label format)
-			dmc_str = f"P{cpn}@Q{lbl_qty}@V{supp_id}@S{current_pkg_id}@K{cust_po}@10D{mfg_date_str}@14D{exp_date_str}@B{doc.name}"
+			# 2D Data Matrix Code string matching Hella MAT Label Working Excel Column B
+			dmc_str = (
+				f"[)>@06@12S0002"
+				f"@P{cpn}"
+				f"@1P{item_desc_clean}"
+				f"@31P{item_desc_clean}"
+				f"@12V652280132"
+				f"@10V{mfg_loc}"
+				f"@2P0@20P"
+				f"@6D{mfg_date_dmc}"
+				f"@14D{exp_date_dmc}"
+				f"@30PY@Z1"
+				f"@K{cust_po}"
+				f"@16K"
+				f"@V{supp_id}"
+				f"@3S{current_pkg_id}"
+				f"@Q{lbl_qty}NAR000"
+				f"@20T1"
+				f"@1T{current_pkg_id}"
+				f"@2T@1Z@@"
+			)
 
 			labels_data.append({
 				"cpn": cpn,
@@ -395,7 +418,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 		<div>
 			<b>TSC TTP-244 Pro Tips:</b> In Chrome Print Preview, set Paper Size to <b>75mm x 50mm</b>, <b>Layout: Portrait</b>, and <b>Margins: None</b>.
 		</div>
-		<button class="btn-action" onclick="window.print()">🖨️ Print Labels</button>
+		<button class="btn-action" onclick="window.print()">Print Labels</button>
 	</div>
 
 	<div id="labels-container"></div>
