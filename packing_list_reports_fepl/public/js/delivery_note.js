@@ -13,7 +13,7 @@ frappe.ui.form.on('Delivery Note', {
 							items.forEach(function(item) {
 								rows_html += `
 									<tr>
-										<td><b>${item.item_name || item.item_code}</b><br><small class="text-muted">CPN: ${item.custom_cpn || 'N/A'} | Pkg ID: ${item.custom_package_id || 'N/A'}</small></td>
+										<td><b>${item.item_name || item.item_code}</b><br><small class="text-muted">CPN: ${item.custom_cpn || 'N/A'} | Lot: ${item.custom_lot_number || 'N/A'} | Pkg ID: ${item.custom_package_id || 'N/A'}</small></td>
 										<td class="text-center">${item.quantity}</td>
 										<td class="text-center">${item.std_qty}</td>
 										<td style="width: 120px;">

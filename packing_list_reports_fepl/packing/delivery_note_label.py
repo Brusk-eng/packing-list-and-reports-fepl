@@ -17,6 +17,9 @@ def get_dn_label_items(docname):
 	if doc_po:
 		doc_po = doc_po.split("\n")[0].strip()
 
+	# Clean Delivery Note number (strip DN- prefix e.g. DN-26-21124-1 -> 26-21124-1)
+	clean_dn = re.sub(r'^DN-?', '', doc.name)
+
 	items = []
 	for item in doc.items:
 		total_qty = float(item.qty or 0)
@@ -41,16 +44,22 @@ def get_dn_label_items(docname):
 			if match:
 				po_val = match.group(1).strip()
 
+		# Location directly from Item Master custom_location (fallback to item row or China)
+		item_loc = frappe.db.get_value("Item", item.item_code, "custom_location")
+		mfg_loc = (item_loc or item.get("custom_mfg_location") or "China").strip()
+		lot_no = (item.get("custom_lot_number") or "").strip()
+
 		items.append({
 			"name": item.name,
 			"item_code": item.item_code,
 			"item_name": item.item_name or item.item_code,
 			"custom_cpn": cpn_val,
 			"custom_package_id": item.get("custom_package_id") or "",
+			"custom_lot_number": lot_no,
 			"custom_customer_po": po_val,
 			"custom_supplier_id": "48104528",
 			"custom_mfg_date": str(item.get("custom_mfg_date") or ""),
-			"custom_mfg_location": item.get("custom_mfg_location") or "China",
+			"custom_mfg_location": mfg_loc,
 			"quantity": item.qty,
 			"std_qty": int(std_qty) if std_qty == int(std_qty) else std_qty,
 			"num_labels": num_labels
@@ -122,7 +131,12 @@ def get_mat_label_html(docname, custom_quantities=None):
 		# 3. Supplier ID: Fixed to 48104528 for all labels as requested
 		supp_id = "48104528"
 
-		mfg_loc = (item.get("custom_mfg_location") or "China").strip()
+		# 4. Location: Fetched directly from Item Master custom_location (fallback to item row or China)
+		item_loc = frappe.db.get_value("Item", item.item_code, "custom_location")
+		mfg_loc = (item_loc or item.get("custom_mfg_location") or "China").strip()
+
+		# 5. Lot Number: Fetched from Delivery Note Item custom_lot_number (blank if not filled)
+		lot_no = (item.get("custom_lot_number") or "").strip()
 		pkg_id = (item.get("custom_package_id") or "").strip()
 		mfg_date_raw = item.get("custom_mfg_date") or doc.posting_date
 		
@@ -176,12 +190,12 @@ def get_mat_label_html(docname, custom_quantities=None):
 				f"@14D{exp_date_dmc}"
 				f"@30PY@Z1"
 				f"@K{cust_po}"
-				f"@16K{doc.name}"
+				f"@16K{clean_dn}"
 				f"@V{supp_id}"
-				f"@3S{current_pkg_id}"
+				f"@3S{lot_no}"
 				f"@Q{lbl_qty}NAR000"
 				f"@20T1"
-				f"@1T{current_pkg_id}"
+				f"@1T{lot_no}"
 				f"@2T@1Z@@"
 			)
 
@@ -191,6 +205,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 				"mfg_location": mfg_loc,
 				"supplier_name": "Formax Electronics Pvt Ltd",
 				"package_id": current_pkg_id,
+				"lot_number": lot_no,
 				"pu_no": pu_no,
 				"part_desc": item_name_clean,
 				"supplier_id": supp_id,
@@ -199,7 +214,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 				"ms_level": item.get("custom_ms_level") or "1",
 				"mfg_date": mfg_date_str,
 				"exp_date": exp_date_str,
-				"shipping_note": doc.name,
+				"shipping_note": clean_dn,
 				"rohs_conf": "RoHSConf",
 				"part_supp_bc": part_supp_bc,
 				"pkg_qty_bc": pkg_qty_bc,
@@ -299,7 +314,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			padding-top: 0.8mm;
 		}}
 		.mid-left {{
-			width: 44mm;
+			width: 46mm;
 			overflow: hidden;
 		}}
 		.mid-left div {{
@@ -308,7 +323,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			text-overflow: ellipsis;
 		}}
 		.mid-right {{
-			width: 25.5mm;
+			width: 23.5mm;
 			overflow: hidden;
 		}}
 		.mid-right div {{
@@ -460,7 +475,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 						<div><b>Purchase Order:</b> ${{lbl.customer_po}}</div>
 						<div><b>Man. Part No:</b> ${{lbl.mpn}}</div>
 						<div><b>MS-Level:</b> ${{lbl.ms_level}} &nbsp;&nbsp; <b>Date of Man.:</b> ${{lbl.mfg_date}}</div>
-						<div><b>Shipping Note:</b> ${{lbl.shipping_note}}</div>
+						<div style="font-size: 5.8pt;"><b>Shipping Note:</b> ${{lbl.shipping_note}} &nbsp; <b>Lot number:</b> ${{lbl.lot_number || ''}}</div>
 					</div>
 					<div class="mid-right">
 						<div><b>Supplier-ID:</b> ${{lbl.supplier_id}} &nbsp; <b>${{lbl.rohs_conf}}</b></div>
