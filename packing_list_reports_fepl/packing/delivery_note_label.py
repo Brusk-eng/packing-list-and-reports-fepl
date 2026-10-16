@@ -72,6 +72,9 @@ def get_mat_label_html(docname, custom_quantities=None):
 	Generates 50mm x 75mm automotive Mat.-Label print stream with 2D Data Matrix and 1D Code 128 barcodes.
 	"""
 	doc = frappe.get_doc("Delivery Note", docname)
+
+	# Clean Delivery Note number (strip DN- prefix e.g. DN-26-21124-1 -> 26-21124-1)
+	clean_dn = re.sub(r'^DN-?', '', doc.name)
 	
 	# Fetch Customer's Purchase Order No from Delivery Note po_no
 	doc_po = (doc.get("po_no") or "").strip()
