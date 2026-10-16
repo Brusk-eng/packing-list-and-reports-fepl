@@ -317,7 +317,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			padding-top: 0.8mm;
 		}}
 		.mid-left {{
-			width: 48mm;
+			width: 44mm;
 			overflow: hidden;
 		}}
 		.mid-left div {{
@@ -326,7 +326,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			text-overflow: ellipsis;
 		}}
 		.mid-right {{
-			width: 22mm;
+			width: 25.5mm;
 			overflow: hidden;
 		}}
 		.mid-right div {{
@@ -474,17 +474,17 @@ def get_mat_label_html(docname, custom_quantities=None):
 				<!-- Middle Section -->
 				<div class="mid-section">
 					<div class="mid-left">
-						<div style="font-size: 5.2pt;"><b>Part-Desc:</b> ${{lbl.part_desc}}</div>
+						<div style="font-size: 5.0pt;"><b>Part-Desc:</b> ${{lbl.part_desc}}</div>
 						<div><b>Purchase Order:</b> ${{lbl.customer_po}}</div>
-						<div style="font-size: 5.4pt;"><b>Man. Part No:</b> ${{lbl.mpn}}</div>
-						<div><b>MS-Level:</b> ${{lbl.ms_level}} &nbsp; <b>${{lbl.rohs_conf}}</b> &nbsp;&nbsp; <b>Date of Man.:</b> ${{lbl.mfg_date}}</div>
-						<div style="font-size: 4.5pt; letter-spacing: -0.1px;"><b>Shipping Note:</b> ${{lbl.shipping_note}} &nbsp; <b>Lot number:</b> ${{lbl.lot_number || ''}}</div>
+						<div style="font-size: 5.6pt;"><b>Man. Part No:</b> ${{lbl.mpn}}</div>
+						<div><b>MS-Level:</b> ${{lbl.ms_level}} &nbsp;&nbsp; <b>Date of Man.:</b> ${{lbl.mfg_date}}</div>
+						<div style="font-size: 5.8pt;"><b>Lot number:</b> <span class="bold-val">${{lbl.lot_number || ''}}</span></div>
 					</div>
 					<div class="mid-right">
 						<div><b>Supplier-ID:</b> ${{lbl.supplier_id}}</div>
-						<div><b>PU-No.:</b> ${{lbl.pu_no}}</div>
-						<div><canvas id="pubc_${{i}}" class="pu-barcode-canvas"></canvas></div>
-						<div><b>Exp.-Date:</b> ${{lbl.exp_date}}</div>
+						<div><b>PU-No.:</b> ${{lbl.pu_no}} &nbsp; <b>${{lbl.rohs_conf}}</b></div>
+						<div style="font-size: 5.3pt;"><b>Shipping Note:</b> ${{lbl.shipping_note}}</div>
+						<div><canvas id="pubc_${{i}}" class="pu-barcode-canvas" style="${{lbl.pu_no ? '' : 'display:none;'}}"></canvas><b>Exp.-Date:</b> ${{lbl.exp_date}}</div>
 					</div>
 				</div>
 
