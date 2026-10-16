@@ -178,7 +178,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 
 			# Formatted 1D Barcode Strings
 			part_supp_bc = f"P{cpn}@V{supp_id}"
-			pkg_qty_bc = f"H{current_pkg_id}@Q{lbl_qty:05d}" if isinstance(lbl_qty, int) else f"H{current_pkg_id}@Q{lbl_qty}"
+			pkg_qty_bc = f"{lot_no}H{current_pkg_id}@Q{lbl_qty:05d}" if isinstance(lbl_qty, int) else f"{lot_no}H{current_pkg_id}@Q{lbl_qty}"
 
 			# 2D Data Matrix Code string matching Hella MAT Label Working Excel Column B
 			dmc_str = (
@@ -317,7 +317,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			padding-top: 0.8mm;
 		}}
 		.mid-left {{
-			width: 46mm;
+			width: 47mm;
 			overflow: hidden;
 		}}
 		.mid-left div {{
@@ -326,7 +326,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 			text-overflow: ellipsis;
 		}}
 		.mid-right {{
-			width: 23.5mm;
+			width: 23mm;
 			overflow: hidden;
 		}}
 		.mid-right div {{
@@ -474,14 +474,14 @@ def get_mat_label_html(docname, custom_quantities=None):
 				<!-- Middle Section -->
 				<div class="mid-section">
 					<div class="mid-left">
-						<div><b>Part-Desc:</b> ${{lbl.part_desc}}</div>
+						<div style="font-size: 5.2pt;"><b>Part-Desc:</b> ${{lbl.part_desc}}</div>
 						<div><b>Purchase Order:</b> ${{lbl.customer_po}}</div>
-						<div><b>Man. Part No:</b> ${{lbl.mpn}}</div>
+						<div style="font-size: 5.4pt;"><b>Man. Part No:</b> ${{lbl.mpn}}</div>
 						<div><b>MS-Level:</b> ${{lbl.ms_level}} &nbsp;&nbsp; <b>Date of Man.:</b> ${{lbl.mfg_date}}</div>
-						<div style="font-size: 5.8pt;"><b>Shipping Note:</b> ${{lbl.shipping_note}} &nbsp; <b>Lot number:</b> ${{lbl.lot_number || ''}}</div>
+						<div style="font-size: 5.1pt;"><b>Shipping Note:</b> ${{lbl.shipping_note}} &nbsp; <b>Lot number:</b> ${{lbl.lot_number || ''}}</div>
 					</div>
 					<div class="mid-right">
-						<div><b>Supplier-ID:</b> ${{lbl.supplier_id}} &nbsp; <b>${{lbl.rohs_conf}}</b></div>
+						<div style="font-size: 5.1pt;"><b>Supplier-ID:</b> ${{lbl.supplier_id}} &nbsp; <b>${{lbl.rohs_conf}}</b></div>
 						<div><b>PU-No.:</b> ${{lbl.pu_no}}</div>
 						<div><canvas id="pubc_${{i}}" class="pu-barcode-canvas"></canvas></div>
 						<div><b>Exp.-Date:</b> ${{lbl.exp_date}}</div>
