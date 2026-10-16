@@ -30,12 +30,16 @@ def get_dn_label_items(docname):
 		# Complete value from custom_cpn
 		cpn_val = (item.get("custom_cpn") or "").strip()
 		
-		# Customer PO: item custom_customer_po or Delivery Note po_no or Sales Order po_no
+		# Customer PO: item custom_customer_po or Delivery Note po_no or Sales Order po_no or extracted from CPN
 		po_val = (item.get("custom_customer_po") or "").strip()
 		if not po_val:
 			po_val = doc_po
 		if not po_val and item.get("against_sales_order"):
 			po_val = (frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or "").strip()
+		if not po_val and cpn_val:
+			match = re.search(r'PO[-:\s#]*([A-Za-z0-9_-]+)', cpn_val, re.IGNORECASE)
+			if match:
+				po_val = match.group(1).strip()
 
 		items.append({
 			"name": item.name,
@@ -104,12 +108,16 @@ def get_mat_label_html(docname, custom_quantities=None):
 		# 1. Part No: Complete value from custom_cpn
 		cpn = (item.get("custom_cpn") or "").strip()
 
-		# 2. Purchase Order: Customer's Purchase Order No from Delivery Note (doc.po_no) or item field
+		# 2. Purchase Order: Customer's Purchase Order No from Delivery Note (doc.po_no) or item field or extracted from CPN
 		cust_po = (item.get("custom_customer_po") or "").strip()
 		if not cust_po:
 			cust_po = doc_po
 		if not cust_po and item.get("against_sales_order"):
 			cust_po = (frappe.db.get_value("Sales Order", item.against_sales_order, "po_no") or "").strip()
+		if not cust_po and cpn:
+			match = re.search(r'PO[-:\s#]*([A-Za-z0-9_-]+)', cpn, re.IGNORECASE)
+			if match:
+				cust_po = match.group(1).strip()
 
 		# 3. Supplier ID: Fixed to 48104528 for all labels as requested
 		supp_id = "48104528"
@@ -168,7 +176,7 @@ def get_mat_label_html(docname, custom_quantities=None):
 				f"@14D{exp_date_dmc}"
 				f"@30PY@Z1"
 				f"@K{cust_po}"
-				f"@16K"
+				f"@16K{doc.name}"
 				f"@V{supp_id}"
 				f"@3S{current_pkg_id}"
 				f"@Q{lbl_qty}NAR000"
