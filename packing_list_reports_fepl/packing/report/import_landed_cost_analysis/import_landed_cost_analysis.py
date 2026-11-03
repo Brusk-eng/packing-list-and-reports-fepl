@@ -46,7 +46,6 @@ def get_data(filters):
 	boe_join = ""
 	bcd_field = "0.0"
 	if has_boe:
-		# Find the correct column name dynamically
 		columns = frappe.db.get_table_columns("Bill of Entry Item")
 		item_field = "item_code" if "item_code" in columns else "item"
 
@@ -63,10 +62,11 @@ def get_data(filters):
 		if bcd_field == "0.0":
 			for col in columns:
 				if "customs" in col or "duty" in col:
-					if col not in ["customs_duty_payable_account", "customs_duty_expense_account"]: # exclude header accounts if accidentally mixed
+					if col not in ["customs_duty_payable_account", "customs_duty_expense_account"]:
 						bcd_field = f"boei.{col}"
 						break
 
+	# 1. Base Query: Fetch Purchase Invoice Items and Bill of Entry
 	sql = f"""
 		SELECT
 			pi.posting_date AS posting_date,
@@ -81,56 +81,11 @@ def get_data(filters):
 			pi.currency AS currency,
 			pi.conversion_rate AS conversion_rate,
 			(pii.rate * pi.conversion_rate) AS price_in_inr,
+			pii.purchase_receipt AS purchase_receipt,
 			
 			{"boe.bill_of_entry_no" if has_boe else "''"} AS be_number,
 			{"boe.bill_of_entry_date" if has_boe else "NULL"} AS be_date,
-			{bcd_field} AS total_bcd,
-			
-			(
-				SELECT SUM(lci.applicable_charges)
-				FROM `tabLanded Cost Item` lci
-				INNER JOIN `tabLanded Cost Voucher` lcv ON lcv.name = lci.parent AND lcv.docstatus = 1
-				INNER JOIN `tabLanded Cost Purchase Receipt` lcpr ON lcpr.parent = lcv.name
-				WHERE (lcpr.receipt_document = pi.name OR lcpr.receipt_document = pii.purchase_receipt) AND lci.item_code = pii.item_code
-			) AS total_lcv_charges,
-			
-			(
-				SELECT SUM(actual_qty) FROM `tabBin` WHERE item_code = pii.item_code
-			) AS stock_qty,
-			
-			(
-				SELECT sii.parent
-				FROM `tabSales Invoice Item` sii
-				INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
-				WHERE sii.item_code = pii.item_code
-				ORDER BY si.posting_date DESC, si.name DESC
-				LIMIT 1
-			) AS sales_invoice_no,
-			(
-				SELECT si.posting_date
-				FROM `tabSales Invoice Item` sii
-				INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
-				WHERE sii.item_code = pii.item_code
-				ORDER BY si.posting_date DESC, si.name DESC
-				LIMIT 1
-			) AS sales_invoice_date,
-			(
-				SELECT si.customer_name
-				FROM `tabSales Invoice Item` sii
-				INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
-				WHERE sii.item_code = pii.item_code
-				ORDER BY si.posting_date DESC, si.name DESC
-				LIMIT 1
-			) AS customer_name,
-			(
-				SELECT sii.rate
-				FROM `tabSales Invoice Item` sii
-				INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
-				WHERE sii.item_code = pii.item_code
-				ORDER BY si.posting_date DESC, si.name DESC
-				LIMIT 1
-			) AS sale_price
-
+			{bcd_field} AS total_bcd
 		FROM `tabPurchase Invoice Item` pii
 		INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent AND pi.docstatus = 1
 		{boe_join}
@@ -139,19 +94,128 @@ def get_data(filters):
 	"""
 	
 	raw_data = frappe.db.sql(sql, filters, as_dict=True)
-	
+	if not raw_data:
+		return []
+
+	# Extract unique item codes and receipt documents for bulk pre-fetching
+	item_codes = list({d.item_code for d in raw_data if d.item_code})
+	receipt_docs = set()
+	for d in raw_data:
+		if d.purchase_invoice:
+			receipt_docs.add(d.purchase_invoice)
+		if d.get("purchase_receipt"):
+			receipt_docs.add(d.purchase_receipt)
+	receipt_docs = list(receipt_docs)
+
+	# 2. Bulk Lookup: Stock Qty from tabBin in a single query
+	stock_map = {}
+	if item_codes:
+		bin_records = frappe.db.sql("""
+			SELECT item_code, SUM(actual_qty) AS stock_qty
+			FROM `tabBin`
+			WHERE item_code IN %(item_codes)s
+			GROUP BY item_code
+		""", {"item_codes": item_codes}, as_dict=True)
+		for b in bin_records:
+			stock_map[b.item_code] = flt(b.stock_qty)
+
+	# 3. Bulk Lookup: Landed Cost Voucher charges for relevant receipts & items
+	lcv_items_map = {}
+	if receipt_docs and item_codes:
+		lcv_records = frappe.db.sql("""
+			SELECT DISTINCT
+				lcpr.receipt_document,
+				lci.item_code,
+				lci.name AS lci_name,
+				lci.applicable_charges
+			FROM `tabLanded Cost Item` lci
+			INNER JOIN `tabLanded Cost Voucher` lcv ON lcv.name = lci.parent AND lcv.docstatus = 1
+			INNER JOIN `tabLanded Cost Purchase Receipt` lcpr ON lcpr.parent = lcv.name
+			WHERE lcpr.receipt_document IN %(receipt_docs)s
+			  AND lci.item_code IN %(item_codes)s
+		""", {"receipt_docs": receipt_docs, "item_codes": item_codes}, as_dict=True)
+		for r in lcv_records:
+			key = (r.receipt_document, r.item_code)
+			if key not in lcv_items_map:
+				lcv_items_map[key] = {}
+			lcv_items_map[key][r.lci_name] = flt(r.applicable_charges)
+
+	# 4. Bulk Lookup: Latest Sales Invoice details per item in a single query
+	sales_map = {}
+	if item_codes:
+		try:
+			si_records = frappe.db.sql("""
+				SELECT
+					item_code,
+					sales_invoice_no,
+					sales_invoice_date,
+					customer_name,
+					sale_price
+				FROM (
+					SELECT
+						sii.item_code,
+						si.name AS sales_invoice_no,
+						si.posting_date AS sales_invoice_date,
+						si.customer_name,
+						sii.rate AS sale_price,
+						ROW_NUMBER() OVER (
+							PARTITION BY sii.item_code 
+							ORDER BY si.posting_date DESC, si.name DESC
+						) AS rn
+					FROM `tabSales Invoice Item` sii
+					INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
+					WHERE sii.item_code IN %(item_codes)s
+				) ranked
+				WHERE ranked.rn = 1
+			""", {"item_codes": item_codes}, as_dict=True)
+			for s in si_records:
+				sales_map[s.item_code] = s
+		except Exception:
+			# Fallback if window functions are unsupported
+			si_records = frappe.db.sql("""
+				SELECT
+					sii.item_code,
+					si.name AS sales_invoice_no,
+					si.posting_date AS sales_invoice_date,
+					si.customer_name,
+					sii.rate AS sale_price
+				FROM `tabSales Invoice Item` sii
+				INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
+				WHERE sii.item_code IN %(item_codes)s
+				ORDER BY si.posting_date DESC, si.name DESC
+			""", {"item_codes": item_codes}, as_dict=True)
+			for s in si_records:
+				if s.item_code not in sales_map:
+					sales_map[s.item_code] = s
+
+	# 5. In-Memory Assembly
 	for d in raw_data:
 		qty = flt(d.qty) or 1.0
 		price_in_inr = flt(d.price_in_inr)
 		
-		# Convert total charges to per-unit
+		# BCD per unit
 		d["bcd_percent"] = flt(d.total_bcd) / qty
-		total_lcv = flt(d.total_lcv_charges) / qty
 		
-		# Since ERPNext lumps all charges into applicable_charges, we dump it into Freight.
-		d["freight"] = total_lcv
+		# Landed Cost Voucher charges per unit
+		matched_lci = {}
+		if d.purchase_invoice and (d.purchase_invoice, d.item_code) in lcv_items_map:
+			matched_lci.update(lcv_items_map[(d.purchase_invoice, d.item_code)])
+		if d.get("purchase_receipt") and (d.purchase_receipt, d.item_code) in lcv_items_map:
+			matched_lci.update(lcv_items_map[(d.purchase_receipt, d.item_code)])
+		total_lcv_charges = sum(matched_lci.values())
+		
+		d["freight"] = total_lcv_charges / qty
 		d["cha_charges"] = 0.0
-		
 		d["landing_cost"] = price_in_inr + d["bcd_percent"] + d["freight"] + d["cha_charges"]
 		
+		# Stock Qty
+		d["stock_qty"] = stock_map.get(d.item_code, 0.0)
+		
+		# Latest Sales Invoice Info
+		si_info = sales_map.get(d.item_code, {})
+		d["customer_name"] = si_info.get("customer_name") or ""
+		d["sale_price"] = si_info.get("sale_price") or 0.0
+		d["sales_invoice_no"] = si_info.get("sales_invoice_no") or ""
+		d["sales_invoice_date"] = si_info.get("sales_invoice_date") or None
+
 	return raw_data
