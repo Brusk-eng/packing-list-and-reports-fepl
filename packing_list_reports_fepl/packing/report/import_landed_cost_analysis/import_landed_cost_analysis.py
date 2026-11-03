@@ -35,6 +35,10 @@ def get_columns():
 		{"label": _("Currency"), "fieldname": "currency", "fieldtype": "Data", "hidden": 1}
 	]
 
+def chunk_list(lst, size=1000):
+	for i in range(0, len(lst), size):
+		yield lst[i:i + size]
+
 def get_data(filters):
 	conditions = ""
 	if filters.get("from_date"): conditions += " AND pi.posting_date >= %(from_date)s"
@@ -66,7 +70,7 @@ def get_data(filters):
 						bcd_field = f"boei.{col}"
 						break
 
-	# 1. Base Query: Fetch Purchase Invoice Items and Bill of Entry
+	# 1. Base Query: Fetch Purchase Invoice Items and Bill of Entry (Stock Items Only)
 	sql = f"""
 		SELECT
 			pi.posting_date AS posting_date,
@@ -88,6 +92,7 @@ def get_data(filters):
 			{bcd_field} AS total_bcd
 		FROM `tabPurchase Invoice Item` pii
 		INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent AND pi.docstatus = 1
+		INNER JOIN `tabItem` item ON item.name = pii.item_code AND item.is_stock_item = 1
 		{boe_join}
 		WHERE 1=1 {conditions}
 		ORDER BY pi.posting_date DESC, pi.name DESC
@@ -107,86 +112,87 @@ def get_data(filters):
 			receipt_docs.add(d.purchase_receipt)
 	receipt_docs = list(receipt_docs)
 
-	# 2. Bulk Lookup: Stock Qty from tabBin in a single query
+	# 2. Bulk Lookup: Stock Qty from tabBin in chunks
 	stock_map = {}
 	if item_codes:
-		bin_records = frappe.db.sql("""
-			SELECT item_code, SUM(actual_qty) AS stock_qty
-			FROM `tabBin`
-			WHERE item_code IN %(item_codes)s
-			GROUP BY item_code
-		""", {"item_codes": item_codes}, as_dict=True)
-		for b in bin_records:
-			stock_map[b.item_code] = flt(b.stock_qty)
+		for i_chunk in chunk_list(item_codes, 1000):
+			bin_records = frappe.db.sql("""
+				SELECT item_code, SUM(actual_qty) AS stock_qty
+				FROM `tabBin`
+				WHERE item_code IN %(chunk)s
+				GROUP BY item_code
+			""", {"chunk": i_chunk}, as_dict=True)
+			for b in bin_records:
+				stock_map[b.item_code] = flt(b.stock_qty)
 
-	# 3. Bulk Lookup: Landed Cost Voucher charges for relevant receipts & items
+	# 3. Bulk Lookup: Landed Cost Voucher charges in chunks
 	lcv_items_map = {}
 	if receipt_docs and item_codes:
-		lcv_records = frappe.db.sql("""
-			SELECT DISTINCT
-				lcpr.receipt_document,
-				lci.item_code,
-				lci.name AS lci_name,
-				lci.applicable_charges
-			FROM `tabLanded Cost Item` lci
-			INNER JOIN `tabLanded Cost Voucher` lcv ON lcv.name = lci.parent AND lcv.docstatus = 1
-			INNER JOIN `tabLanded Cost Purchase Receipt` lcpr ON lcpr.parent = lcv.name
-			WHERE lcpr.receipt_document IN %(receipt_docs)s
-			  AND lci.item_code IN %(item_codes)s
-		""", {"receipt_docs": receipt_docs, "item_codes": item_codes}, as_dict=True)
-		for r in lcv_records:
-			key = (r.receipt_document, r.item_code)
-			if key not in lcv_items_map:
-				lcv_items_map[key] = {}
-			lcv_items_map[key][r.lci_name] = flt(r.applicable_charges)
+		for r_chunk in chunk_list(receipt_docs, 1000):
+			lcv_records = frappe.db.sql("""
+				SELECT DISTINCT
+					lcpr.receipt_document,
+					lci.item_code,
+					lci.name AS lci_name,
+					lci.applicable_charges
+				FROM `tabLanded Cost Item` lci
+				INNER JOIN `tabLanded Cost Voucher` lcv ON lcv.name = lci.parent AND lcv.docstatus = 1
+				INNER JOIN `tabLanded Cost Purchase Receipt` lcpr ON lcpr.parent = lcv.name
+				WHERE lcpr.receipt_document IN %(chunk)s
+			""", {"chunk": r_chunk}, as_dict=True)
+			for r in lcv_records:
+				key = (r.receipt_document, r.item_code)
+				if key not in lcv_items_map:
+					lcv_items_map[key] = {}
+				lcv_items_map[key][r.lci_name] = flt(r.applicable_charges)
 
-	# 4. Bulk Lookup: Latest Sales Invoice details per item in a single query
+	# 4. Bulk Lookup: Latest Sales Invoice details per item in small chunks to keep filesort in RAM
 	sales_map = {}
 	if item_codes:
-		try:
-			si_records = frappe.db.sql("""
-				SELECT
-					item_code,
-					sales_invoice_no,
-					sales_invoice_date,
-					customer_name,
-					sale_price
-				FROM (
+		for i_chunk in chunk_list(item_codes, 500):
+			try:
+				si_records = frappe.db.sql("""
+					SELECT
+						item_code,
+						sales_invoice_no,
+						sales_invoice_date,
+						customer_name,
+						sale_price
+					FROM (
+						SELECT
+							sii.item_code,
+							si.name AS sales_invoice_no,
+							si.posting_date AS sales_invoice_date,
+							si.customer_name,
+							sii.rate AS sale_price,
+							ROW_NUMBER() OVER (
+								PARTITION BY sii.item_code 
+								ORDER BY si.posting_date DESC, si.name DESC
+							) AS rn
+						FROM `tabSales Invoice Item` sii
+						INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
+						WHERE sii.item_code IN %(chunk)s
+					) ranked
+					WHERE ranked.rn = 1
+				""", {"chunk": i_chunk}, as_dict=True)
+				for s in si_records:
+					sales_map[s.item_code] = s
+			except Exception:
+				si_records = frappe.db.sql("""
 					SELECT
 						sii.item_code,
 						si.name AS sales_invoice_no,
 						si.posting_date AS sales_invoice_date,
 						si.customer_name,
-						sii.rate AS sale_price,
-						ROW_NUMBER() OVER (
-							PARTITION BY sii.item_code 
-							ORDER BY si.posting_date DESC, si.name DESC
-						) AS rn
+						sii.rate AS sale_price
 					FROM `tabSales Invoice Item` sii
 					INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
-					WHERE sii.item_code IN %(item_codes)s
-				) ranked
-				WHERE ranked.rn = 1
-			""", {"item_codes": item_codes}, as_dict=True)
-			for s in si_records:
-				sales_map[s.item_code] = s
-		except Exception:
-			# Fallback if window functions are unsupported
-			si_records = frappe.db.sql("""
-				SELECT
-					sii.item_code,
-					si.name AS sales_invoice_no,
-					si.posting_date AS sales_invoice_date,
-					si.customer_name,
-					sii.rate AS sale_price
-				FROM `tabSales Invoice Item` sii
-				INNER JOIN `tabSales Invoice` si ON si.name = sii.parent AND si.docstatus = 1
-				WHERE sii.item_code IN %(item_codes)s
-				ORDER BY si.posting_date DESC, si.name DESC
-			""", {"item_codes": item_codes}, as_dict=True)
-			for s in si_records:
-				if s.item_code not in sales_map:
-					sales_map[s.item_code] = s
+					WHERE sii.item_code IN %(chunk)s
+					ORDER BY si.posting_date DESC, si.name DESC
+				""", {"chunk": i_chunk}, as_dict=True)
+				for s in si_records:
+					if s.item_code not in sales_map:
+						sales_map[s.item_code] = s
 
 	# 5. In-Memory Assembly
 	for d in raw_data:
